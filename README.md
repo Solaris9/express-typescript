@@ -4,7 +4,7 @@ Express framework powered by TypeScript.
 
 Note: I am not a professional programmer, just a hobbyist who likes to explore new ideas.
 
-I made this because I was bored in quarantine, it's basically what the title says. An express application but powered by TypeScript.
+I made this because I was bored in quarantine, it's basically what the title says. An express framework but powered by TypeScript.
 
 You have a main file and a folder for controllers.
 
@@ -14,13 +14,13 @@ Start with a main file:
 ```typescript
 import { ExpressApplication } from "express-typescript"
 
-// optionally specify the controllers path, full or relative.
+// Optionally specify the controllers path, full or relative.
 @ExpressApplication({ port: 8080 })
 export default class Application {
-    // add whatever you want here, it'll be avaliable in the Controllers.
+    // Add whatever you want here, it'll be avaliable in the Controllers.
 }
 ```
-# Controllers
+# Controller
 Then with a controller:
 ```typescript
 import { Response } from "express";
