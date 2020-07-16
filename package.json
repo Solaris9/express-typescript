@@ -1,0 +1,26 @@
+{
+  "name": "express-typescript",
+  "version": "1.0.0",
+  "description": "",
+  "main": "./dist/index.js",
+  "typings": "./typings/index.d.ts",
+  "scripts": {
+    "build": "rm -rf ./dist && tsc && npm run types",
+    "types": "dts-bundle --removeSource --name express-typescript --main ./dist --out ../typings/index.d.ts --baseDir ./dist"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.19.0",
+    "dts-bundle": "^0.7.3",
+    "express": "^4.17.1",
+    "reflect-metadata": "^0.1.13",
+    "typescript": "^3.9.6"
+  },
+  "bin": "./dist/cli.js",
+  "devDependencies": {
+    "@types/express": "^4.17.7",
+    "@types/node": "^14.0.22"
+  }
+}
