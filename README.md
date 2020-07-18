@@ -6,8 +6,6 @@ Note: I am not a professional programmer, just a hobbyist who likes to explore n
 
 I made this because I was bored in quarantine, it's basically what the title says. An express framework but powered by TypeScript.
 
-You have a main file and a folder for controllers.
-
 # ExpressApplication
 
 Start with a main file:
@@ -21,16 +19,17 @@ export default class Application {
 }
 ```
 # Controller
-Then with a controller:
+
+Then with a controller in the controller's folder:
 ```typescript
 import { Response } from "express";
-import { Controller, GetMapping, HTTPResponse } from "express-typescript";
+import { Controller, HTTPResponse } from "express-typescript";
 
 // @Controller decorator required to make it a controller, with a route as an argument.
 @Controller("/")
 export default class MainController {
     // Appends to the Controller route, making it "/" as a GET request.
-    @GetMapping("")
+    @Controller.Get("")
     // Decorate "res" as a HTTPReponse, required so it can pass it from the express method.
     public index(@HTTPResponse res: Response) { 
         // And finally send a response.
@@ -41,7 +40,7 @@ export default class MainController {
 
 There's a bunch more stuff I added too.
 
-- @PathVariable()
+- @RouteParameter()
 - @Parameter()
 - @Middleware()
 - @RequestBody
@@ -52,14 +51,14 @@ Specifies an argument to be a path parameter.
 
 ```typescript
 import { Response } from "express";
-import { Controller, GetMapping, HTTPResponse, PathVariable } from "express-typescript";
+import { Controller, HTTPResponse, RouteParameter } from "express-typescript";
 
 @Controller("/")
 export default class MainController {
     // Specify a route parameter.
-    @GetMapping("/:name")
+    @Controller.Get("/:name")
     // Decorate a argument as a path variable.
-    public index(@PathVariable() name: string, @HTTPResponse res: Response) { 
+    public index(@RouteParameter() name: string, @HTTPResponse res: Response) { 
         // Use name parameter without doing request.params.name.
         res.send(`Hello ${name}!`)
     }
@@ -72,11 +71,11 @@ You can override this by specifying the route parameter name as a string in @Pat
 
 # @Parameter()
 
-Specifies a parameter function to be ran when a parameter is received.
+Specifies a parameter function to be ran for a parameter.
 
 ```typescript
 import { Response, Request } from "express";
-import { Controller, GetMapping, HTTPResponse, PathVariable, Parameter } from "express-typescript";
+import { Controller, HTTPResponse, RouteParameter, Parameter } from "express-typescript";
 
 @Controller("/")
 export default class MainController {
@@ -84,12 +83,14 @@ export default class MainController {
     @Parameter()
     // It'll pass the Request, Response and the value of the parameter.
     public name(req: Request, res: Response, name: string) {
-        // Note: will probably be changed to next(), idk how express works that much tbh
-        return name.slice(0, 1).toUpperCase() + name.slice(1, -1).toLowerCase();
+        // Throw an error to exit (basically same as not calling next()) and handle the error in a ErrorHandler.
+        if (name === "test") throw new Error("Forbidden name.");
+        // Return the value (basically the same as next() but assigns the value to the RouteParamter).
+        return name.slice(0, 1).toUpperCase() + name.slice(1, name.length).toLowerCase();
     }
 
-    @GetMapping("/:name")
-    public index(@PathVariable() name: string, @HTTPResponse res: Response) { 
+    @Controller.Get("/:name")
+    public index(@RouteParameter() name: string, @HTTPResponse res: Response) { 
         res.send(`Hello ${name}!`); // Get request to /solaris will return "Hello Solaris!".
     }
 }
@@ -101,17 +102,18 @@ Adds middleware to a route.
 
 ```typescript
 import { Response, Request } from "express";
-import { Controller, GetMapping, HTTPResponse, Middleware, Next } from "express-typescript";
+import { Controller, HTTPResponse, Middleware } from "express-typescript";
 
 // Define a function to be used as middleware.
-function logTime(req: Request, res: Response, next: Next) {
+function logTime(req: Request, res: Response, next: () => void) {
     console.log(`Date: ${new Date().toDateString()}`);
-    next();
+    // note: this will use next() until i figure out some way to put my own stuff between it
+    next()
 }
 
 @Controller("/")
 export default class MainController {
-    @GetMapping("/")
+    @Controller.Get("/")
     // Pass the function to the @Middleware() decorator.
     @Middleware(logTime)
     public index(@HTTPResponse res: Response) { 
@@ -126,7 +128,7 @@ Specifies an argument to be a request body.
 
 ```typescript
 import { Response, Request } from "express";
-import { Controller, GetMapping, HTTPResponse, RequestBody } from "express-typescript";
+import { Controller, HTTPResponse, RequestBody } from "express-typescript";
 
 // Define a class to be used as a model.
 class Body {
@@ -135,13 +137,37 @@ class Body {
 
 @Controller("/")
 export default class MainController {
-    @GetMapping("/")
+    @Controller.Get("/")
     // Decorate a argument with @RequestBody to use it as the request body.
     public index(@RequestBody body: Body, @HTTPResponse res: Response) { 
         res.send(`Hello ${body.name}!`);
     }
 }
 ``` 
+
+# Error handling
+
+Note: You do not need to handle errors if you do not want any custom error handling.
+
+These must be present in the /errors folder in the application directory, or a custom one provided in the ExpressApplication decorator. 
+
+```typescript
+import { Response, Request } from "express";
+import { ErrorHandler } from "express-typescript";
+
+export default class extends ErrorHandler {
+    public supports(error: any): boolean {
+        // Check whether the error is the right error, or return true if you want to match all errors.
+        return error instanceof YourError;
+    }
+
+    public handle(req: Request, res: Response, error: Error) {
+        // Handle the error in some way.
+        res.send(error.message)
+    }
+}
+```
+
 
 And that's all I have for it right now, some planned things are:
 - Joi body validation using @Validate decorator
