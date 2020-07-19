@@ -12,10 +12,10 @@ Start with a main file:
 ```typescript
 import { ExpressApplication } from "express-typescript"
 
-// Optionally specify the controllers path, full or relative.
-@ExpressApplication({ port: 8080 })
+// Optionally specify the port, controllers &/ errors path, full or relative.
+@ExpressApplication()
 export default class Application {
-    // Add whatever you want here, it'll be avaliable in the Controllers.
+    // Add whatever you want here, it'll be available in the Controllers/ErrorsHandlers.
 }
 ```
 # Controller
@@ -30,7 +30,7 @@ import { Controller, HTTPResponse } from "express-typescript";
 export default class MainController {
     // Appends to the Controller route, making it "/" as a GET request.
     @Controller.Get("")
-    // Decorate "res" as a HTTPReponse, required so it can pass it from the express method.
+    // Decorate "res" as a HTTPResponse, required so it can pass it from the express method.
     public index(@HTTPResponse res: Response) { 
         // And finally send a response.
         res.send("Hello world!")
@@ -45,7 +45,7 @@ There's a bunch more stuff I added too.
 - @Middleware()
 - @RequestBody
 
-# @PathVariable()
+# @RouteParameter()
 
 Specifies an argument to be a path parameter.
 
@@ -98,17 +98,16 @@ export default class MainController {
 
 # @Middleware()
 
-Adds middleware to a route.
+Adds middle ware to a route.
 
 ```typescript
 import { Response, Request } from "express";
 import { Controller, HTTPResponse, Middleware } from "express-typescript";
 
 // Define a function to be used as middleware.
-function logTime(req: Request, res: Response, next: () => void) {
+function logTime(req: Request, res: Response) {
     console.log(`Date: ${new Date().toDateString()}`);
-    // note: this will use next() until i figure out some way to put my own stuff between it
-    next()
+    // With/without return will act as next(), you can throw errors to be caught in your custom error handlers or be handled by express normally.
 }
 
 @Controller("/")
@@ -168,8 +167,5 @@ export default class extends ErrorHandler {
 }
 ```
 
-
 And that's all I have for it right now, some planned things are:
 - Joi body validation using @Validate decorator
-- @QueryParameter()
-- Possible the use of Koa as someone who shut up about it

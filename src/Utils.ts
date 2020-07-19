@@ -11,5 +11,5 @@ export function readDir(app: Application, type: string): { directory: string, fi
         directory = join(app.applicationDirectory, app.options[type] || type);
     }
 
-    return { files: readdirSync(directory).filter(f => f.endsWith(".js")), directory }
+    return { files: readdirSync(directory).filter(f => f.endsWith(".js")), directory };
 }

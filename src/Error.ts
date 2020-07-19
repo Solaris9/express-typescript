@@ -1,9 +1,11 @@
 import { Application } from "./Application";
 import { Request, Response } from "express";
-import { readDir } from "./Utils"
+import { readDir } from "./Utils";
 import { join } from "path";
+import { existsSync } from "fs";
 
 export interface ErrorHandler {
+    readonly app: Application;
     supports(error: any): boolean;
     handle(request: Request, response: Response, error: any): void;
 }
@@ -17,7 +19,7 @@ export default class {
     private errors = new Map<string, ErrorHandler>();
 
     public loadAll() {
-        const res = readDir(this.app, "errors")
+        const res = readDir(this.app, "errors");
         this.files = res.files;
         this.directory = res.directory;
 
@@ -26,12 +28,16 @@ export default class {
 
     public load(name: string) {
         const file = join(this.directory, name);
+
+        if (!existsSync(file)) return console.log(`File ${name} in ${this.directory} does not exist.`);
+
         const mod = require(file);
 
         if (!(mod.default.prototype instanceof ErrorHandler))
             return console.log(`File ${name} does not extend from ErrorHandler.`);
 
         mod.default.prototype.file = file;
+        mod.default.prototype.app = this.app;
 
         const error = new mod.default() as ErrorHandler;
         this.errors.set(name.slice(0, -3), error);
@@ -43,7 +49,7 @@ export default class {
 
         this.errors.delete(name.slice(0, -3));
         // @ts-ignore
-        delete require.cache[error.file]
+        delete require.cache[error.file];
     }
 
     public iterate(req, res, error: any): boolean {
@@ -54,11 +60,11 @@ export default class {
             }
         }
 
-        return false
+        return false;
     }
 
     public init(app: Application) {
         this.app = app;
-        this.loadAll()
+        this.loadAll();
     }
 }

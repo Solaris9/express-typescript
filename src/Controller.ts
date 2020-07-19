@@ -1,6 +1,8 @@
 import { Application } from "./Application";
+import { Request, Response } from "express";
 import { readDir } from "./Utils";
 import { join } from "path";
+import { existsSync } from "fs";
 
 export interface Controller {
     readonly app: Application;
@@ -9,9 +11,9 @@ export interface Controller {
 export function Controller(route: string) {
     return <T extends { new(...args: any[]): {} }>(constructor: T) => {
         if (route.length !== 1 && !route.startsWith("/"))
-            throw new RangeError("Controller route must start with a forward slash.")
+            throw new RangeError("Controller route must start with a forward slash.");
         if (route.length !== 1 && !/[a-z]$/i.test(route))
-            throw new RangeError("Controller route must end with A to Z.")
+            throw new RangeError("Controller route must end with A to Z.");
 
         Reflect.defineMetadata("expressController", true, constructor);
         constructor.prototype.route = route;
@@ -19,7 +21,7 @@ export function Controller(route: string) {
     }
 }
 
-export type Methods = "ALL" | "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD" | string
+export type Methods = "ALL" | "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD" | string;
 
 export interface RouteOptions {
     route: string;
@@ -59,26 +61,26 @@ function decorator(type: Types, target: any, propertyKey: string, parameterIndex
 }
 
 export function RequestBody(target: any, propertyKey: string, parameterIndex: number) {
-    decorator("body", target, propertyKey, parameterIndex)
+    decorator("body", target, propertyKey, parameterIndex);
 }
 
 export function HTTPRequest(target: any, propertyKey: string, parameterIndex: number) {
-    decorator("request", target, propertyKey, parameterIndex)
+    decorator("request", target, propertyKey, parameterIndex);
 }
 
 export function HTTPResponse(target: any, propertyKey: string, parameterIndex: number) {
-    decorator("response", target, propertyKey, parameterIndex)
+    decorator("response", target, propertyKey, parameterIndex);
 }
 
-export function RouteParamter(name?: string) {
+export function RouteParameter(name?: string) {
     return (target: any, propertyKey: string, parameterIndex: number) => {
-        decorator("parameter", target, propertyKey, parameterIndex, name)
+        decorator("parameter", target, propertyKey, parameterIndex, name);
     }
 }
 
-export function Middleware(...functions: ((request: Request, response: Response, next: () => void) => void)[]) {
+export function Middleware(...functions: ((request: Request, response: Response) => void)[]) {
     if (!functions.length)
-        throw new RangeError("@Middleware() annotation requires at least one middleware to be present.");
+        throw new RangeError("@Middleware() decorator requires at least one middleware to be present.");
 
     return function (target, propertyKey: string, descriptor: PropertyDescriptor) {
         Reflect.defineMetadata("routeMiddlewares", functions, target, propertyKey);
@@ -103,15 +105,18 @@ export default class {
     private controllers = new Map<string, Controller>();
 
     public loadAll() {
-        const res = readDir(this.app, "controllers")
+        const res = readDir(this.app, "controllers");
         this.files = res.files;
         this.directory = res.directory;
 
-        for (const file of this.files) this.load(file)
+        for (const file of this.files) this.load(file);
     }
 
     public load(name: string) {
         const file = join(this.directory, name);
+
+        if (!existsSync(file)) return console.log(`File ${name} in ${this.directory} does not exist.`);
+
         const mod = require(file);
 
         if (!mod.default) return console.error(`Controller located at ${name} has no default export.`);
@@ -124,11 +129,12 @@ export default class {
         mod.default.prototype.parameters = new Map<string, Function>();
 
         const controller = new mod.default();
-        this.controllers.set(name.slice(0, -3), controller);
 
         const routeMethods = Reflect.getMetadata("routeMethods", controller) || [];
 
         if (!routeMethods.length) return console.log(`Controller ${name} does not have any routes.`);
+
+        this.controllers.set(name.slice(0, -3), controller);
 
         const routeParamters = Reflect.getMetadata("routeParameters", controller) || [];
 
@@ -138,7 +144,7 @@ export default class {
             controller.parameters.set(parameter, controller[key].bind(controller));
         }
 
-        for (const key of routeMethods) this.loadRoute(mod.default, controller, key)
+        for (const key of routeMethods) this.loadRoute(mod.default, controller, key);
     }
 
     public unload(name: string) {
@@ -146,8 +152,6 @@ export default class {
         if (!controller) return;
 
         const routeMethods = Reflect.getMetadata("routeMethods", controller) || [];
-
-        if (!routeMethods.length) return;
 
         for (const key of routeMethods) {
             const routeOptions: RouteOptions = Reflect.getMetadata("routeOptions", controller, key);
@@ -157,12 +161,12 @@ export default class {
                 .replace(/\/+/, "/")
                 .replace(/\\+/, "/");
 
-            this.removeRoute(routeName)
+            this.removeRoute(routeName);
         }
 
-        this.controllers.delete(name)
+        this.controllers.delete(name);
         // @ts-ignore
-        delete require.cache[controller.file]
+        delete require.cache[controller.file];
     }
 
     private loadRoute(mod, controller: Controller, key: string) {
@@ -179,12 +183,12 @@ export default class {
         if (!this.app.express[routeMethod])
             return console.log(new RangeError(`Express does not have a "${routeMethod}" HTTP method.`));
 
-        this.app.express[routeMethod](routeName, routeMiddlewares, (request, response) => {
+        this.app.express[routeMethod](routeName, (request, response) => {
             const routeParams = Object.entries(request.params);
             let routeParam = 0;
 
             if (routeArgs.filter(r => r.type === "variable").length > routeParams.length)
-                throw new Error(`Route ${routeName} has path variables not specified in route annotation.`)
+                throw new Error(`Route ${routeName} has path variables not specified in route decorator.`);
 
             for (const index in routeParams) {
                 // @ts-ignore
@@ -192,7 +196,20 @@ export default class {
                 if (!func) continue;
 
                 try {
-                    routeParams[index][1] = func(request, response, routeParams[index][1]);
+                    const val = func(request, response, routeParams[index][1]);
+                    if (val) {
+                        request.params[routeParams[index][0]] = val;
+                        routeParams[index][1] = val;
+                    }
+                } catch (error) {
+                    const success = this.app.errors.iterate(request, response, error);
+                    if (!success) throw error; else return;
+                }
+            }
+
+            for (const middleware of routeMiddlewares) {
+                try {
+                    middleware(request, response);
                 } catch (error) {
                     const success = this.app.errors.iterate(request, response, error);
                     if (!success) throw error; else return;
@@ -221,13 +238,13 @@ export default class {
 
     public removeRoute(route: string) {
         const stack: any[] = this.app.express._router.stack;
-        const index = stack.findIndex(s => (s.route || {}).path === route)
+        const index = stack.findIndex(s => (s.route || {}).path === route);
         stack.splice(index, 1);
     }
 
     public init(app: Application) {
         this.app = app;
-        this.loadAll()
+        this.loadAll();
     }
 
     public makeBody(clazz, body) {

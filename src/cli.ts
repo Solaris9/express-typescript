@@ -9,14 +9,14 @@ if (!arg) {
     process.exit();
 }
 
-const file = path.join(process.cwd(), arg)
+const file = path.join(process.cwd(), arg);
 
 if (!fs.existsSync(file)) {
     console.log("File provided does not exist.");
     process.exit();
 }
 
-let mod = require(file)
+let mod = require(file);
 
 if (!mod.default) {
     console.log("File provided does not have a default export.");
@@ -28,4 +28,4 @@ if (Reflect.getMetadata("expressClass", mod.default) !== true) {
     process.exit();
 }
 
-new mod.default(path.dirname(file))
+new mod.default(path.dirname(file));

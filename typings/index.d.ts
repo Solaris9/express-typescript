@@ -25,7 +25,7 @@ declare module 'express-typescript/Application' {
         readonly applicationDirectory: string;
         readonly express: Express;
     }
-    export function ExpressApplication(options: ExpressOptions): <T extends new (...args: any[]) => {}>(constructor: T) => {
+    export function ExpressApplication(options?: ExpressOptions): <T extends new (...args: any[]) => {}>(constructor: T) => {
         new (...args: any[]): {
             readonly options: ExpressOptions;
             readonly controllers: Controller;
@@ -38,6 +38,7 @@ declare module 'express-typescript/Application' {
 
 declare module 'express-typescript/Controller' {
     import { Application } from "express-typescript/Application";
+    import { Request, Response } from "express";
     export interface Controller {
         readonly app: Application;
     }
@@ -58,8 +59,8 @@ declare module 'express-typescript/Controller' {
     export function RequestBody(target: any, propertyKey: string, parameterIndex: number): void;
     export function HTTPRequest(target: any, propertyKey: string, parameterIndex: number): void;
     export function HTTPResponse(target: any, propertyKey: string, parameterIndex: number): void;
-    export function RouteParamter(name?: string): (target: any, propertyKey: string, parameterIndex: number) => void;
-    export function Middleware(...functions: ((request: Request, response: Response, next: () => void) => void)[]): (target: any, propertyKey: string, descriptor: PropertyDescriptor) => void;
+    export function RouteParameter(name?: string): (target: any, propertyKey: string, parameterIndex: number) => void;
+    export function Middleware(...functions: ((request: Request, response: Response) => void)[]): (target: any, propertyKey: string, descriptor: PropertyDescriptor) => void;
     export function Parameter(parameter?: string): (target: any, propertyKey: string, descriptor: PropertyDescriptor) => void;
     export default class {
         app: Application;
@@ -78,6 +79,7 @@ declare module 'express-typescript/Error' {
     import { Application } from "express-typescript/Application";
     import { Request, Response } from "express";
     export interface ErrorHandler {
+        readonly app: Application;
         supports(error: any): boolean;
         handle(request: Request, response: Response, error: any): void;
     }
