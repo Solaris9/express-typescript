@@ -56,9 +56,10 @@ declare module 'express-typescript/Controller' {
         route: string;
         method?: Methods;
     }
-    export function RequestBody(target: any, propertyKey: string, parameterIndex: number): void;
     export function HTTPRequest(target: any, propertyKey: string, parameterIndex: number): void;
     export function HTTPResponse(target: any, propertyKey: string, parameterIndex: number): void;
+    export function RequestBody(target: any, propertyKey: string, parameterIndex: number): void;
+    export function Validate(target: any, propertyKey: string, parameterIndex: number): void;
     export function RouteParameter(name?: string): (target: any, propertyKey: string, parameterIndex: number) => void;
     export function Middleware(...functions: ((request: Request, response: Response) => void)[]): (target: any, propertyKey: string, descriptor: PropertyDescriptor) => void;
     export function Parameter(parameter?: string): (target: any, propertyKey: string, descriptor: PropertyDescriptor) => void;
@@ -71,7 +72,7 @@ declare module 'express-typescript/Controller' {
         unload(name: string): void;
         removeRoute(route: string): void;
         init(app: Application): void;
-        makeBody(clazz: any, body: any): any;
+        makeBody(klazz: any, body: any, validate: any): any;
     }
 }
 

@@ -40,10 +40,11 @@ export default class MainController {
 
 There's a bunch more stuff I added too.
 
-- @RouteParameter()
-- @Parameter()
-- @Middleware()
-- @RequestBody
+- [@RouteParameter()](#routeparameter)
+- [@Parameter()](#parameter)
+- [@Middleware()](#middleware)
+- [@RequestBody](#requestbody)
+- [@Validate](#requestbody)
 
 # @RouteParameter()
 
@@ -85,13 +86,13 @@ export default class MainController {
     public name(req: Request, res: Response, name: string) {
         // Throw an error to exit (basically same as not calling next()) and handle the error in a ErrorHandler.
         if (name === "test") throw new Error("Forbidden name.");
-        // Return the value (basically the same as next() but assigns the value to the RouteParamter).
-        return name.slice(0, 1).toUpperCase() + name.slice(1, name.length).toLowerCase();
+        // Return the value (basically the same as next() but assigns the value to the RouteParameter).
+        return User.find({ name });
     }
 
     @Controller.Get("/:name")
-    public index(@RouteParameter() name: string, @HTTPResponse res: Response) { 
-        res.send(`Hello ${name}!`); // Get request to /solaris will return "Hello Solaris!".
+    public index(@RouteParameter() user: User, @HTTPResponse res: Response) { 
+        res.send(`Hello ${user.fullName}!`); // Get request to /solaris will return "Hello Solaris!".
     }
 }
 ``` 
@@ -125,8 +126,10 @@ export default class MainController {
 
 Specifies an argument to be a request body.
 
+> Note: To use Joi data validation you must install `joiful` via npm and decorate the body with @Validate, this only works on @RequestBody
+
 ```typescript
-import { Response, Request } from "express";
+import { Response } from "express";
 import { Controller, HTTPResponse, RequestBody } from "express-typescript";
 
 // Define a class to be used as a model.
@@ -166,6 +169,3 @@ export default class extends ErrorHandler {
     }
 }
 ```
-
-And that's all I have for it right now, some planned things are:
-- Joi body validation using @Validate decorator

@@ -52,16 +52,19 @@ Controller.Patch = (route: string) => Controller.Route(route, "PATCH");
 Controller.Post = (route: string) => Controller.Route(route, "POST");
 Controller.Delete = (route: string) => Controller.Route(route, "DELETE");
 
-type Types  = "request" | "response" | "parameter" | "next" | "body";
+type Types  = "validate" | "request" | "response" | "parameter" | "next" | "body";
 
-function decorator(type: Types, target: any, propertyKey: string, parameterIndex: number, name?: string) {
-    const meta = Reflect.getMetadata("routeArguments", target, propertyKey) || [];
-    meta.push({ index: parameterIndex, type, name });
+function decorator(type: Types, target: any, propertyKey: string, parameterIndex: number, data?: any) {
+    const meta: any[] = Reflect.getMetadata("routeArguments", target, propertyKey) || [];
+    const existing = meta.find(d => d.index == parameterIndex);
+
+    if (existing) {
+        meta[parameterIndex + 1] = { ...existing, ...data }
+    } else {
+        meta.push({ index: parameterIndex, type, ...data });
+    }
+
     Reflect.defineMetadata("routeArguments", meta, target, propertyKey);
-}
-
-export function RequestBody(target: any, propertyKey: string, parameterIndex: number) {
-    decorator("body", target, propertyKey, parameterIndex);
 }
 
 export function HTTPRequest(target: any, propertyKey: string, parameterIndex: number) {
@@ -72,9 +75,17 @@ export function HTTPResponse(target: any, propertyKey: string, parameterIndex: n
     decorator("response", target, propertyKey, parameterIndex);
 }
 
+export function RequestBody(target: any, propertyKey: string, parameterIndex: number) {
+    decorator("body", target, propertyKey, parameterIndex);
+}
+
+export function Validate(target: any, propertyKey: string, parameterIndex: number) {
+    decorator("validate", target, propertyKey, parameterIndex, { validate: true });
+}
+
 export function RouteParameter(name?: string) {
     return (target: any, propertyKey: string, parameterIndex: number) => {
-        decorator("parameter", target, propertyKey, parameterIndex, name);
+        decorator("parameter", target, propertyKey, parameterIndex,{ name });
     }
 }
 
@@ -216,18 +227,18 @@ export default class {
                 }
             }
 
-            const args = routeArgs.map(arg => {
-                if (arg.type === "parameter" && arg.name) return routeParams.find(p => p[0] === arg.name)[1];
-
-                switch (arg.type) {
-                    case "request": return request;
-                    case "body": return this.makeBody(routeTypes[arg.index], request.body);
-                    case "response": return response;
-                    case "parameter": return routeParams[routeParam++][1];
-                }
-            });
-
             try {
+                const args = routeArgs.map(arg => {
+                    if (arg.type === "parameter" && arg.name) return routeParams.find(p => p[0] === arg.name)[1];
+
+                    switch (arg.type) {
+                        case "request": return request;
+                        case "body": return this.makeBody(routeTypes[arg.index], request.body, arg.validate)
+                        case "response": return response;
+                        case "parameter": return routeParams[routeParam++][1];
+                    }
+                });
+
                 controller[key](...args);
             } catch (error) {
                 const success = this.app.errors.iterate(request, response, error);
@@ -247,9 +258,16 @@ export default class {
         this.loadAll();
     }
 
-    public makeBody(clazz, body) {
-        clazz = new clazz();
-        for (const [key, value] of Object.entries(body)) clazz[key] = value;
-        return clazz;
+    public makeBody(klazz, body, validate) {
+        const klass = new klazz();
+        for (const [key, value] of Object.entries(body)) klass[key] = value;
+
+        if (validate) {
+            const { validate } = require("joiful");
+            const res = validate(klass);
+            if (res.error) throw res.error;
+        }
+
+        return klass;
     }
 }

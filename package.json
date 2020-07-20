@@ -11,6 +11,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "bin": "./dist/cli.js",
   "dependencies": {
     "body-parser": "^1.19.0",
     "dts-bundle": "^0.7.3",
@@ -18,7 +19,9 @@
     "reflect-metadata": "^0.1.13",
     "typescript": "^3.9.6"
   },
-  "bin": "./dist/cli.js",
+  "optionalDependencies": {
+    "joiful": "^2.0.1"
+  },
   "devDependencies": {
     "@types/express": "^4.17.7",
     "@types/node": "^14.0.22"
