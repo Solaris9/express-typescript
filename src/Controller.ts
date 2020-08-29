@@ -8,12 +8,16 @@ export interface Controller {
     readonly app: Application;
 }
 
+function checkRoute(route: string) {
+    if (route.length !== 1 && !route.startsWith("/"))
+        throw new RangeError("Controller route must start with a forward slash.");
+    if (route.length !== 1 && !/[a-z]$/i.test(route))
+        throw new RangeError("Controller route must end with A to Z.");
+}
+
 export function Controller(route: string) {
     return <T extends { new(...args: any[]): {} }>(constructor: T) => {
-        if (route.length !== 1 && !route.startsWith("/"))
-            throw new RangeError("Controller route must start with a forward slash.");
-        if (route.length !== 1 && !/[a-z]$/i.test(route))
-            throw new RangeError("Controller route must end with A to Z.");
+        checkRoute(route);
 
         Reflect.defineMetadata("expressController", true, constructor);
         constructor.prototype.route = route;
@@ -21,14 +25,24 @@ export function Controller(route: string) {
     }
 }
 
-export type Methods = "ALL" | "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD" | string;
+export function MethodController(route: string) {
+    return (target: any, propertyKey: string) => {
+        checkRoute(route);
+
+        let programList: string[] = Reflect.getMetadata("propertyControllers", target) || [];
+        programList.push(propertyKey);
+        Reflect.defineMetadata("propertyControllers", programList, target);
+
+        Reflect.defineMetadata("propertyControllerRoute", route, target, propertyKey);
+    }
+}
 
 export interface RouteOptions {
     route: string;
-    method?: Methods;
+    method?: string;
 }
 
-Controller.Route = (routeOrOptions: string | RouteOptions, method?: Methods) => {
+Controller.Route = (routeOrOptions: string | RouteOptions, method?: string) => {
     return (target, propertyKey: string, descriptor: PropertyDescriptor) => {
         let programList: string[] = Reflect.getMetadata("routeMethods", target) || [];
         programList.push(propertyKey);
@@ -140,22 +154,43 @@ export default class {
         mod.default.prototype.parameters = new Map<string, Function>();
 
         const controller = new mod.default();
-
-        const routeMethods = Reflect.getMetadata("routeMethods", controller) || [];
-
-        if (!routeMethods.length) return console.log(`Controller ${name} does not have any routes.`);
-
         this.controllers.set(name.slice(0, -3), controller);
 
-        const routeParamters = Reflect.getMetadata("routeParameters", controller) || [];
+        this.loadController(mod.default, controller)
+    }
 
-        for (const key of routeParamters) {
-            const parameter = Reflect.getMetadata("routeParameter", controller, key);
-            if (!parameter) continue;
-            controller.parameters.set(parameter, controller[key].bind(controller));
+    private loadController(mod: any, controller: Controller) {
+        const propertyControllers = Reflect.getMetadata("propertyControllers", controller) || [];
+        const routeMethods = Reflect.getMetadata("routeMethods", controller) || [];
+
+        if (propertyControllers.length) {
+            for (const key of propertyControllers) {
+                const propertyControllerRoute =  Reflect.getMetadata("propertyControllerRoute", controller, key);
+                // @ts-ignore
+                const finalRoute = controller.route + propertyControllerRoute;
+
+                const nestedMod = controller[key];
+
+                nestedMod.app = this.app;
+                nestedMod.parameters = new Map<string, Function>();
+                nestedMod.route = finalRoute;
+
+                this.loadController(nestedMod, nestedMod);
+            }
         }
 
-        for (const key of routeMethods) this.loadRoute(mod.default, controller, key);
+        if (routeMethods.length) {
+            const routeParamters = Reflect.getMetadata("routeParameters", controller) || [];
+
+            for (const key of routeParamters) {
+                const parameter = Reflect.getMetadata("routeParameter", controller, key);
+                if (!parameter) continue;
+                // @ts-ignore
+                controller.parameters.set(parameter, controller[key].bind(controller));
+            }
+
+            for (const key of routeMethods) this.loadRoute(mod, controller, key);
+        }
     }
 
     public unload(name: string) {
@@ -183,8 +218,10 @@ export default class {
     private loadRoute(mod, controller: Controller, key: string) {
         const routeOptions: RouteOptions = Reflect.getMetadata("routeOptions", controller, key);
         const routeTypes = Reflect.getMetadata("design:paramtypes", controller, key);
-        const routeArgs: any[] = (Reflect.getMetadata("routeArguments", mod.prototype, key) || []).reverse();
-        const routeMiddlewares = Reflect.getMetadata("routeMiddlewares", mod.prototype, key) || [];
+        // @ts-ignore
+        const routeArgs: any[] = (Reflect.getMetadata("routeArguments", (mod.prototype || mod.__proto__), key) || []).reverse();
+        // @ts-ignore
+        const routeMiddlewares = Reflect.getMetadata("routeMiddlewares", (mod.prototype || mod.__proto__), key) || [];
         const routeMethod = routeOptions.method.toLowerCase();
         // @ts-ignore
         const routeName = (controller.route + routeOptions.route)
@@ -258,7 +295,7 @@ export default class {
         this.loadAll();
     }
 
-    public makeBody(klazz, body, validate) {
+    private makeBody(klazz, body, validate) {
         const klass = new klazz();
         for (const [key, value] of Object.entries(body)) klass[key] = value;
 

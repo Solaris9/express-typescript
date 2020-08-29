@@ -6,7 +6,48 @@ Note: I am not a professional programmer, just a hobbyist who likes to explore n
 
 I made this because I was bored in quarantine, it's basically what the title says. An express framework but powered by TypeScript.
 
-# ExpressApplication
+# Start
+
+There are two ways to start using express-typescript, one would be using the CLI without a main file and the other with a main file.
+
+Both will use the CLI command `express-typescript` to start the express server
+
+Flags for the CLI:
+
+> These can be found with the `--help` flag.
+
+#### main
+The main file to start, it will use the directory of this file to load the controllers and the error handlers
+
+Type: string
+
+#### port
+The port to start the server on.
+
+Type: number  \
+Default: 8080
+
+#### controllers
+The directory for controllers handlers.
+
+Type: string
+
+#### errors
+The directory for error handlers.
+
+Type: number
+
+## CLI
+
+If you do not want to have an empty main file you can use the CLI to start the server with a default main class.
+
+This looks for a folder named `controllers` and `errors` to load those files, you can specify those as options.
+ 
+```shell
+express-typescript
+```
+
+## ExpressApplication
 
 Start with a main file:
 ```typescript
@@ -18,6 +59,15 @@ export default class Application {
     // Add whatever you want here, it'll be available in the Controllers/ErrorsHandlers.
 }
 ```
+
+Then start it using the CLI command:
+
+```shell
+express-typescript ./main.js
+
+express-typescript --main ./main.js
+```
+
 # Controller
 
 Then with a controller in the controller's folder:
@@ -41,6 +91,7 @@ export default class MainController {
 There's a bunch more stuff I added too.
 
 - [@RouteParameter()](#routeparameter)
+- [@MethodController()](#methodcontroller)
 - [@Parameter()](#parameter)
 - [@Middleware()](#middleware)
 - [@RequestBody](#requestbody)
@@ -61,13 +112,44 @@ export default class MainController {
     // Decorate a argument as a path variable.
     public index(@RouteParameter() name: string, @HTTPResponse res: Response) { 
         // Use name parameter without doing request.params.name.
-        res.send(`Hello ${name}!`)
+        res.send(`Hello ${name}!`);
     }
 }
 ``` 
 
 If you were paying attention you might have noticed that it has optional parameters in the @PathVariable() decorator.
 That if because express-typescript will pass the route parameters as specified by the @PathVariable().
+You can override this by specifying the route parameter name as a string in @PathVariable() decorator.
+
+# @MethodController()
+
+Specifies a class property to be its own controller.
+
+```typescript
+import { Response } from "express";
+import { Controller, HTTPResponse, RouteParameter, MethodController } from "express-typescript";
+
+@Controller("/")
+export default class MainController {
+    // Specify class property to be a controller.
+    @MethodController("/nested")
+    // Assign the controller to the property.
+    public nested = new NestedController();
+}
+
+class NestedController {
+    // Specify a route parameter.
+    @Controller.Get("/:name")
+    // Decorate a argument as a path variable.
+    public index(@RouteParameter() name: string, @HTTPResponse res: Response) { 
+        // Use name parameter without doing request.params.name.
+        res.send(`Hello ${name}!`); // Get request to /nested/solaris will return "Hello Solaris!".
+    }
+}
+``` 
+
+If you were paying attention you might have noticed that it has optional parameters in the @PathVariable() decorator.
+That if because express-typescript will pass the route parameters as specified by the @PathVariable() positions.
 You can override this by specifying the route parameter name as a string in @PathVariable() decorator.
 
 # @Parameter()

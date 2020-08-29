@@ -21,7 +21,7 @@ export interface Application {
 export function ExpressApplication(options?: ExpressOptions ) {
     return <T extends { new(...args: any[]): {} }>(constructor: T) => {
         Reflect.defineMetadata("expressClass", true, constructor);
-        constructor.prototype.options = { port: 8080, ...options };
+        constructor.prototype.options = options;
         constructor.prototype.controllers = new Controller();
         constructor.prototype.errors = new ErrorHandler();
         constructor.prototype.express = express();

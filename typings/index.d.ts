@@ -51,10 +51,10 @@ declare module 'express-typescript/Controller' {
         var Post: (route: string) => (target: any, propertyKey: string, descriptor: PropertyDescriptor) => void;
         var Delete: (route: string) => (target: any, propertyKey: string, descriptor: PropertyDescriptor) => void;
     }
-    export type Methods = "ALL" | "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD" | string;
+    export function MethodController(route: string): (target: any, propertyKey: string) => void;
     export interface RouteOptions {
         route: string;
-        method?: Methods;
+        method?: string;
     }
     export function HTTPRequest(target: any, propertyKey: string, parameterIndex: number): void;
     export function HTTPResponse(target: any, propertyKey: string, parameterIndex: number): void;
@@ -72,7 +72,6 @@ declare module 'express-typescript/Controller' {
         unload(name: string): void;
         removeRoute(route: string): void;
         init(app: Application): void;
-        makeBody(klazz: any, body: any, validate: any): any;
     }
 }
 
