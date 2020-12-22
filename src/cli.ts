@@ -22,7 +22,7 @@ const args = yargs
     })
     .argv;
 
-let server, dir = process.cwd();
+let Server, dir = process.cwd();
 
 if (args.main || args._[0]) {
     const file = path.join(process.cwd(), (args.main || args._[0]));
@@ -44,14 +44,12 @@ if (args.main || args._[0]) {
         process.exit();
     }
 
-    server = mod.default;
+    Server = mod.default;
     dir = path.dirname(file)
 } else {
-    @ExpressApplication({ ...args } as any)
-    class DefaultExpressApplication {
-    }
-
-    server = DefaultExpressApplication
+    @ExpressApplication(args as any)
+    class DefaultExpressApplication {}
+    Server = DefaultExpressApplication
 }
 
-new server(dir);
+new Server(dir);

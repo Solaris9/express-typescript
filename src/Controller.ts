@@ -1,39 +1,65 @@
+import { RequestHandlerParams } from "express-serve-static-core"
 import { Application } from "./Application";
-import { Request, Response } from "express";
+import { Request, Response, Router } from "express";
 import { readDir } from "./Utils";
 import { join } from "path";
 import { existsSync } from "fs";
 
 export interface Controller {
     readonly app: Application;
+    readonly parameters: Map<string, Function>;
 }
 
 function checkRoute(route: string) {
+    if (typeof route === "undefined") throw new RangeError("Controller route must be present.")
     if (route.length !== 1 && !route.startsWith("/"))
         throw new RangeError("Controller route must start with a forward slash.");
     if (route.length !== 1 && !/[a-z]$/i.test(route))
         throw new RangeError("Controller route must end with A to Z.");
 }
 
-export function Controller(route: string) {
-    return <T extends { new(...args: any[]): {} }>(constructor: T) => {
-        checkRoute(route);
-
-        Reflect.defineMetadata("expressController", true, constructor);
-        constructor.prototype.route = route;
-        return constructor;
-    }
+export interface ControllerOptions {
+    route: string;
+    middleware: Function[];
+    mergeMiddleware: boolean;
 }
 
-export function MethodController(route: string) {
-    return (target: any, propertyKey: string) => {
-        checkRoute(route);
+const defaultControllerOptions: Partial<ControllerOptions> = {
+    middleware: [],
+    mergeMiddleware: false,
+    route: ""
+}
 
-        let programList: string[] = Reflect.getMetadata("propertyControllers", target) || [];
-        programList.push(propertyKey);
-        Reflect.defineMetadata("propertyControllers", programList, target);
+export function Controller(route: string): any
+export function Controller(options: Partial<ControllerOptions>): any
+export function Controller(route: string, options?: Partial<ControllerOptions>): any
 
-        Reflect.defineMetadata("propertyControllerRoute", route, target, propertyKey);
+export function Controller(routeOrOptions: string | Partial<ControllerOptions>, options: Partial<ControllerOptions> = {}): any {
+    const controllerOptions = typeof options !== "undefined" ? { ...options, route: routeOrOptions as string } : 
+        typeof routeOrOptions === "string" ? { route: routeOrOptions } : routeOrOptions
+    
+    checkRoute(controllerOptions.route);
+
+    return function() {
+        const [target, key] = arguments
+
+        if (typeof key === "string") {
+            let propertyControllers: string[] = Reflect.getMetadata("propertyControllers", target) || [];
+            Reflect.defineMetadata("propertyControllers", propertyControllers.concat(key), target);
+
+            const middleware = Reflect.getMetadata("controllerMiddleware", target) || [];
+            Reflect.defineMetadata("controllerMiddleware", middleware.concat(options.middleware), target[key]);
+
+            delete options.middleware
+            Reflect.defineMetadata("controllerOptions", controllerOptions, target, key);
+        } else {
+            Reflect.defineMetadata("controllerMiddleware", options.middleware, target)
+            Reflect.defineMetadata("expressController", true, target);
+
+            delete options.middleware
+            Reflect.defineMetadata("controllerOptions", controllerOptions, target);
+            return target;
+        }
     }
 }
 
@@ -103,9 +129,14 @@ export function RouteParameter(name?: string) {
     }
 }
 
-export function Middleware(...functions: ((request: Request, response: Response) => void)[]) {
+export function Middleware(target, propertyKey: string, descriptor: PropertyDescriptor) {
+    let middleware: Function[] = Reflect.getMetadata("controllerMiddleware", target) || [];
+    Reflect.defineMetadata("controllerMiddleware", middleware.concat(target[propertyKey]), target);
+}
+
+export function Use(...functions: ((request: Request, response: Response, next: Function) => void)[]) {
     if (!functions.length)
-        throw new RangeError("@Middleware() decorator requires at least one middleware to be present.");
+        throw new RangeError("@Use() decorator requires at least one middleware to be present.");
 
     return function (target, propertyKey: string, descriptor: PropertyDescriptor) {
         Reflect.defineMetadata("routeMiddlewares", functions, target, propertyKey);
@@ -121,6 +152,21 @@ export function Parameter(parameter?: string) {
         const name = parameter || propertyKey;
         Reflect.defineMetadata("routeParameter", name, target, propertyKey);
     }
+}
+
+function wrap(self, func) {
+    if (Object.has)
+
+    function wrapper(request, response, next) {
+        try {
+            func.bind(this)(request, response, next)
+        } catch (error) {
+            const success = this.app.errors.iterate(request, response, error);
+            if (!success) throw error; else return;
+        }
+    }
+
+    return wrapper.bind(self)
 }
 
 export default class {
@@ -149,40 +195,53 @@ export default class {
         if (Reflect.getMetadata("expressController", mod.default) !== true)
             return console.error(`Controller located at ${name} is not decorated with @Controller.`);
 
-        mod.default.prototype.file = file;
-        mod.default.prototype.app = this.app;
-        mod.default.prototype.parameters = new Map<string, Function>();
-
         const controller = new mod.default();
-        this.controllers.set(name.slice(0, -3), controller);
 
+        controller.file = file
+        controller.app = this.app
+        controller.parameters = new Map<string, Function>();
+
+        this.controllers.set(name.slice(0, -3), controller);
         this.loadController(mod.default, controller)
     }
 
     private loadController(mod: any, controller: Controller) {
+        const controllerOptions: ControllerOptions = { ...defaultControllerOptions, ...Reflect.getMetadata("controllerOptions", (mod || mod.__proto__)) };
+
+        const controllerMiddleware: Function[] = Reflect.getMetadata("controllerMiddleware", controller) || [];
+        Reflect.defineMetadata("controllerMiddleware", controllerMiddleware.map(func => wrap(controller, func)), controller)
+
         const propertyControllers = Reflect.getMetadata("propertyControllers", controller) || [];
         const routeMethods = Reflect.getMetadata("routeMethods", controller) || [];
 
         if (propertyControllers.length) {
             for (const key of propertyControllers) {
-                const propertyControllerRoute =  Reflect.getMetadata("propertyControllerRoute", controller, key);
-                // @ts-ignore
-                const finalRoute = controller.route + propertyControllerRoute;
+                const propertyControllerOptions: ControllerOptions = { ...defaultControllerOptions, ...Reflect.getMetadata("controllerOptions", controller, key) };
+                propertyControllerOptions.route = controllerOptions.route + propertyControllerOptions.route;
 
                 const nestedMod = controller[key];
 
+                if (propertyControllerOptions.mergeMiddleware) {
+                    const nestedControllerMiddleware: Function[] = Reflect.getMetadata("controllerMiddleware", nestedMod.__proto__) || [];
+                    const middleware = nestedControllerMiddleware.map(func => wrap(nestedMod, func)).concat(controllerMiddleware);
+                    Reflect.defineMetadata("controllerMiddleware", middleware, nestedMod.__proto__);
+                }
+
+                delete propertyControllerOptions.middleware
+
+                Reflect.defineMetadata("controllerOptions", propertyControllerOptions, nestedMod.__proto__);
+
                 nestedMod.app = this.app;
                 nestedMod.parameters = new Map<string, Function>();
-                nestedMod.route = finalRoute;
 
                 this.loadController(nestedMod, nestedMod);
             }
         }
 
         if (routeMethods.length) {
-            const routeParamters = Reflect.getMetadata("routeParameters", controller) || [];
+            const routeParameters = Reflect.getMetadata("routeParameters", controller) || [];
 
-            for (const key of routeParamters) {
+            for (const key of routeParameters) {
                 const parameter = Reflect.getMetadata("routeParameter", controller, key);
                 if (!parameter) continue;
                 // @ts-ignore
@@ -198,12 +257,11 @@ export default class {
         if (!controller) return;
 
         const routeMethods = Reflect.getMetadata("routeMethods", controller) || [];
+        const controllerOptions: ControllerOptions = Reflect.getMetadata("controllerOptions", controller) || {};
 
         for (const key of routeMethods) {
             const routeOptions: RouteOptions = Reflect.getMetadata("routeOptions", controller, key);
-            const routeMethod = routeOptions.method.toLowerCase();
-            // @ts-ignore
-            const routeName = (controller.route + routeOptions.route)
+            const routeName = (controllerOptions.route + routeOptions.route)
                 .replace(/\/+/, "/")
                 .replace(/\\+/, "/");
 
@@ -218,20 +276,22 @@ export default class {
     private loadRoute(mod, controller: Controller, key: string) {
         const routeOptions: RouteOptions = Reflect.getMetadata("routeOptions", controller, key);
         const routeTypes = Reflect.getMetadata("design:paramtypes", controller, key);
-        // @ts-ignore
         const routeArgs: any[] = (Reflect.getMetadata("routeArguments", (mod.prototype || mod.__proto__), key) || []).reverse();
-        // @ts-ignore
-        const routeMiddlewares = Reflect.getMetadata("routeMiddlewares", (mod.prototype || mod.__proto__), key) || [];
+        const controllerOptions: ControllerOptions = { ...defaultControllerOptions, ...Reflect.getMetadata("controllerOptions", (mod || mod.__proto__)) };
+        const routeMiddlewares: Function[] = Reflect.getMetadata("routeMiddlewares", (mod || mod.__proto__), key) || [];
+        const middleware = controllerOptions.middleware.concat(...routeMiddlewares.map(func => wrap(controller, func)));
+
         const routeMethod = routeOptions.method.toLowerCase();
-        // @ts-ignore
-        const routeName = (controller.route + routeOptions.route)
+        const routeName = (controllerOptions.route + routeOptions.route)
             .replace(/\/+/, "/")
             .replace(/\\+/, "/");
 
         if (!this.app.express[routeMethod])
             return console.log(new RangeError(`Express does not have a "${routeMethod}" HTTP method.`));
+        
+        console.log(`Registered ${routeMethod.toUpperCase()} route ${routeName}`)
 
-        this.app.express[routeMethod](routeName, (request, response) => {
+        this.app.express[routeMethod](routeName, middleware, (request, response) => {
             const routeParams = Object.entries(request.params);
             let routeParam = 0;
 
@@ -249,15 +309,6 @@ export default class {
                         request.params[routeParams[index][0]] = val;
                         routeParams[index][1] = val;
                     }
-                } catch (error) {
-                    const success = this.app.errors.iterate(request, response, error);
-                    if (!success) throw error; else return;
-                }
-            }
-
-            for (const middleware of routeMiddlewares) {
-                try {
-                    middleware(request, response);
                 } catch (error) {
                     const success = this.app.errors.iterate(request, response, error);
                     if (!success) throw error; else return;
@@ -295,16 +346,23 @@ export default class {
         this.loadAll();
     }
 
-    private makeBody(klazz, body, validate) {
-        const klass = new klazz();
-        for (const [key, value] of Object.entries(body)) klass[key] = value;
+    private makeBody(Model, body: Record<string, unknown>, validate = false) {
+        const model = new Model();
+        for (const [key, value] of Object.entries(body)) model[key] = value;
 
         if (validate) {
-            const { validate } = require("joiful");
-            const res = validate(klass);
+            let joi = null;
+
+            try {
+                joi = require("joiful");
+            } catch {
+                throw new Error("Cannot use Joi validation when module \"joiful\" is not installed.");
+            }
+
+            const res = joi.validate(model);
             if (res.error) throw res.error;
         }
 
-        return klass;
+        return model;
     }
 }
